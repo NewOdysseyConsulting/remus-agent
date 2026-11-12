@@ -115,6 +115,7 @@ If a network failure interrupts `remus request`, retry it with the same `--idemp
 - Report the arguments truthfully. Do not understate an amount or rename a target to get a different answer.
 - One request, one action. Do not reuse an `id` for a different action.
 - If you are running inside Claude Code with the Remus plugin installed, your built-in tool calls (shell commands, file edits, MCP calls) are already checked by a hook. Use this skill for actions the hook cannot see as such, for example a business operation you carry out through a script or an API.
+- When that hook refuses a call because it is waiting for a reviewer, the same rules apply as under "Review": stop, tell the user it is waiting for approval in Remus, and make the same call again, unchanged, only after the user says it has been approved. When the hook refuses a call outright, treat it as under "Deny".
 
 ## Other commands
 

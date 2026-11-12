@@ -36,8 +36,14 @@
     "on_review_timeout": {
       "type": "string",
       "title": "When no reviewer answers in time",
-      "description": "ask (default): ask the person at the keyboard, who can override the review for that one call. deny: refuse the call and tell Claude to wait for the approval.",
-      "default": "ask"
+      "description": "deny (default): refuse the call and tell Claude to wait for the approval. ask: ask the person at the keyboard, who can then override the review for that one call.",
+      "default": "deny"
+    },
+    "content": {
+      "type": "string",
+      "title": "File content sent to Remus",
+      "description": "preview (default): the first 2,000 characters of a write or of each side of an edit, with size and SHA-256. hash: size and SHA-256 only. none: no content at all. Files that look like secrets (.env, keys, credentials) are never sent as text. Also applies to MCP tool inputs.",
+      "default": "preview"
     },
     "on_error": {
       "type": "string",

@@ -4,7 +4,7 @@
 //
 //   Remus deny    -> the call is denied, with the rule as the reason.
 //   Remus review  -> wait for a reviewer (up to review_wait_seconds); approved continues, rejected denies,
-//                    no answer in time asks the person at the keyboard (or denies, if configured).
+//                    no answer in time denies (or, if configured, asks the person at the keyboard).
 //   Remus allow   -> by default no decision: Claude Code's normal permission flow applies. Remus never widens what
 //                    Claude Code would allow unless on_allow is set to "approve".
 //   Remus unreachable, key missing, allowance used up -> denied (fail closed), unless on_error says otherwise.
@@ -33,7 +33,10 @@ export function readConfig(env) {
     apiUrl: raw('API_URL') || env.REMUS_API_URL || DEFAULT_API_URL,
     // An unrecognised value falls back to the stricter choice.
     onAllow: choice('ON_ALLOW', ['prompt', 'approve'], 'prompt'),
-    onReviewTimeout: choice('ON_REVIEW_TIMEOUT', ['ask', 'deny'], raw('ON_REVIEW_TIMEOUT') ? 'deny' : 'ask'),
+    // A rule that requires a reviewer is not something the person at the keyboard can wave through, unless they opt in.
+    onReviewTimeout: choice('ON_REVIEW_TIMEOUT', ['ask', 'deny'], 'deny'),
+    // How much of a file's content (and of an MCP tool's input) is sent: a clipped preview, only a hash, or nothing.
+    content: choice('CONTENT', ['preview', 'hash', 'none'], raw('CONTENT') ? 'none' : 'preview'),
     onError: choice('ON_ERROR', ['deny', 'ask', 'pass'], 'deny'),
     reviewWaitSeconds: number('REVIEW_WAIT_SECONDS', 60, 0, 300),
     timeoutMs: number('TIMEOUT_MS', 4000, 500, 30000),
@@ -85,6 +88,22 @@ export function firstWord(command) {
   return program ? segment(program) : 'none';
 }
 
+/** File names and directories whose content is never sent, whatever the content setting: only a hash and a length. */
+export function looksSecret(path) {
+  const parts = String(path).split(/[\\/]/);
+  const name = (parts[parts.length - 1] || '').toLowerCase();
+  if (parts.slice(0, -1).some(part => ['.ssh', '.aws', '.gnupg', '.kube', '.docker', 'secrets'].includes(part.toLowerCase()))) return true;
+  return /^\.env(\..*)?$/.test(name) || /\.(pem|key|p12|pfx|jks|keystore|kdbx|asc|gpg)$/.test(name) || /^id_(rsa|dsa|ecdsa|ed25519)/.test(name)
+    || /^credentials/.test(name) || /secret|passwd|password|token/.test(name) || ['.netrc', '.npmrc', '.pypirc', '.pgpass', '.htpasswd'].includes(name);
+}
+
+/** One piece of content as args, according to the content setting: preview (clipped text), hash, or nothing. */
+function contentArgs(prefix, text, mode, limit) {
+  if (mode === 'none') return {};
+  const digest = { [`${prefix}_bytes`]: Buffer.byteLength(text), [`${prefix}_sha256`]: sha(text) };
+  return mode === 'preview' ? { ...digest, [`${prefix}_preview`]: clip(text, limit) } : digest;
+}
+
 /** Shrinks arbitrary tool input until it fits: long strings are clipped, and as a last resort only a digest is sent. */
 function compact(input) {
   const shrink = (value, depth) => {
@@ -105,11 +124,12 @@ function fit(args) {
 
 /**
  * The Remus request for one tool call: { action, resource, args }.
- *   Files:  resource is the path (relative to the project when inside it); args say whether it is inside the project.
+ *   Files:  resource is the path (relative to the project when inside it); args say whether it is inside the project,
+ *           and carry the change as a preview, a hash or nothing (the `content` setting; secret-looking paths: hash).
  *   Bash:   resource is "<program>:<working directory>"; args carry the command.
  *   Other:  resource names the target (URL, or MCP server/tool); args are the tool input, clipped.
  */
-export function describe(hook, projectDir) {
+export function describe(hook, projectDir, content = 'preview') {
   const tool = hook.tool_name; const input = hook.tool_input && typeof hook.tool_input === 'object' ? hook.tool_input : {};
   const project = projectDir || hook.cwd || '';
   const action = actionFor(tool);
@@ -122,9 +142,14 @@ export function describe(hook, projectDir) {
   if (typeof filePath === 'string' && filePath) {
     const file = place(filePath, project);
     const args = { path: file.shown, in_project: file.inProject, file_name: basename(file.absolute), extension: extname(file.absolute).slice(1).toLowerCase() };
-    if (typeof input.content === 'string') Object.assign(args, { content_bytes: Buffer.byteLength(input.content), content_sha256: sha(input.content), content_preview: clip(input.content, 2000) });
-    if (typeof input.old_string === 'string') args.old_string = clip(input.old_string, 2000);
-    if (typeof input.new_string === 'string') args.new_string = clip(input.new_string, 2000);
+    // Content of a path that looks like key material or an environment file never leaves the machine as text.
+    const secret = looksSecret(file.absolute);
+    const mode = secret && content === 'preview' ? 'hash' : content;
+    if (secret) args.sensitive_path = true;
+    if (typeof input.content === 'string') Object.assign(args, contentArgs('content', input.content, mode, 2000));
+    if (typeof input.old_string === 'string') Object.assign(args, contentArgs('old', input.old_string, mode, 2000));
+    if (typeof input.new_string === 'string') Object.assign(args, contentArgs('new', input.new_string, mode, 2000));
+    if (typeof input.new_source === 'string') Object.assign(args, contentArgs('new', input.new_source, mode, 2000));
     if (input.replace_all !== undefined) args.replace_all = Boolean(input.replace_all);
     if (Array.isArray(input.edits)) args.edits = input.edits.length;
     return { action, resource: resourceOf(file.shown), args: fit(args) };
@@ -135,7 +160,9 @@ export function describe(hook, projectDir) {
     return { action, resource: resourceOf(input.url.split('#')[0]), args: fit({ url: clip(input.url, 2000), host }) };
   }
   const mcp = /^mcp__(.+?)__(.+)$/.exec(tool);
-  return { action, resource: resourceOf(mcp ? `${mcp[1]}/${mcp[2]}` : tool), args: compact(input) };
+  const text = JSON.stringify(input);
+  const args = content === 'preview' ? compact(input) : { keys: Object.keys(input).slice(0, 50).map(key => clean(key).slice(0, 100)), ...(content === 'hash' ? { input_bytes: Buffer.byteLength(text), input_sha256: sha(text) } : {}) };
+  return { action, resource: resourceOf(mcp ? `${mcp[1]}/${mcp[2]}` : tool), args };
 }
 
 /** One key per tool call, so a hook that is run twice for the same call reaches the same Remus request. */
@@ -221,7 +248,7 @@ export async function decide(hook, config) {
   if (!matches(hook.tool_name, config.tools) || matches(hook.tool_name, config.skipTools)) return null;
   if (!config.key) throw new GuardError('missing_key', 'No Remus agent key is configured. Set it in the plugin options, or export REMUS_AGENT_KEY.');
   const call = client(config);
-  const request = describe(hook, config.projectDir);
+  const request = describe(hook, config.projectDir, config.content);
   const callKey = idempotencyKey(hook, request);
   const contentKey = sha(canonical(request)).slice(0, 48);
   const proceed = async (remus, reviewed) => {
@@ -287,7 +314,7 @@ export function onFailure(error, config) {
 /** After the tool ran (or failed): report the outcome for calls that were claimed in Remus. */
 export async function report(hook, config, status) {
   if (!config.recordOutcomes || !config.key || !hook?.tool_name) return;
-  const callKey = idempotencyKey(hook, describe(hook, config.projectDir));
+  const callKey = idempotencyKey(hook, describe(hook, config.projectDir, config.content));
   const claimed = readState(config, 'calls', callKey);
   if (!claimed?.id) return;
   await client(config)('POST', `/v1/requests/${encodeURIComponent(claimed.id)}/outcome`, { status, result: { tool: hook.tool_name } });

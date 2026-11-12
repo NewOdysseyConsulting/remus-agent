@@ -54,17 +54,17 @@ In a Claude Code session inside a project, ask for each of these:
 | --- | --- |
 | run `npm test` (or any harmless command) | Runs as usual, with Claude Code's normal permission prompt if you have not already allowed it |
 | run `sudo ls` | Refused: Claude reports that Remus denied it by rule `deny_sudo` |
-| run `rm -rf some-scratch-directory` | After the wait, you are asked, and the request appears in the Remus **Approvals** inbox |
+| run `rm -rf some-scratch-directory` | After the wait, refused: Claude reports that the call is waiting for approval, and the request appears in the Remus **Approvals** inbox |
 | write a `.env` file | Refused by rule `protect_secrets_and_git` |
 
 Then open **Decision history** in the dashboard: each call is there with the rule that decided it.
 
 ## 5. Approving a held call
 
-A held call appears in **Approvals** with the command or the change, the working directory and the rule. A reviewer (a workspace admin or reviewer; developers cannot approve) approves or rejects that exact request.
+A held call appears in **Approvals** with the command or the change, the working directory and the rule. (How much of a file change is shown depends on the plugin's `content` option; by default it is the first 2,000 characters, and never the text of a file that looks like a secret.) A reviewer (a workspace admin or reviewer; developers cannot approve) approves or rejects that exact request.
 
 - If the approval arrives while the plugin is still waiting, the call continues.
-- If it arrives later, ask Claude to make the same call again: the plugin finds the approved request and continues without a second review. An approval can be used once and expires five minutes after it is given (the policy's `validForSeconds`).
+- If it arrives later, tell Claude it is approved and to make the same call again: the plugin finds the approved request and continues without a second review. An approval can be used once and expires five minutes after it is given (the policy's `validForSeconds`).
 
 ## If every call is refused
 

@@ -29,7 +29,7 @@ Then set the agent key: run `/plugin` in a session, open **remus**, and paste th
 | Remus says | The plugin does |
 | --- | --- |
 | **deny** | Denies the call. Claude is told which rule refused it and not to look for a way round. |
-| **review** | Waits up to 60 seconds for a reviewer. Approved: the call continues, and the approval is used up. Rejected: denied. No answer in time: you are asked (you can override the review for that one call), or the call is denied if you set **When no reviewer answers in time** to `deny`. If Claude makes the same call again later, the plugin continues with the same held request rather than asking the reviewer twice. |
+| **review** | Waits up to 60 seconds for a reviewer. Approved: the call continues, and the approval is used up. Rejected: denied. No answer in time: the call is denied and Claude is told it is waiting for approval. When Claude makes the same call again later, the plugin continues with the same held request rather than asking the reviewer twice. The person at the keyboard cannot wave a held call through, unless you set **When no reviewer answers in time** to `ask`. |
 | **allow** | Nothing. Claude Code's own permission flow decides as usual, so the plugin never widens what Claude Code would allow. Set **When Remus allows a call** to `approve` if you want Remus's allow to skip Claude Code's prompt. |
 | nothing (unreachable, no key, key rejected, allowance used up) | Denies the call: the guard fails closed. Set **When Remus cannot decide** to `ask` or `pass` to change that. |
 
@@ -42,13 +42,30 @@ Each checked call becomes one request from the agent that owns the key:
 | Tool | `action` | `resource` | `args` |
 | --- | --- | --- | --- |
 | Bash | `claude.bash` | `<program>:<working directory>`, e.g. `git:.` | `command`, `program`, `cwd`, `in_project`, `background` |
-| Write, Edit, MultiEdit, NotebookEdit | `claude.write`, `claude.edit`, `claude.multi_edit`, `claude.notebook_edit` | the file path, relative to the project when inside it | `path`, `in_project`, `file_name`, `extension`, and a clipped view of the change (`content_preview` with size and SHA-256, or `old_string` / `new_string`) |
+| Write, Edit, MultiEdit, NotebookEdit | `claude.write`, `claude.edit`, `claude.multi_edit`, `claude.notebook_edit` | the file path, relative to the project when inside it | `path`, `in_project`, `file_name`, `extension`, `sensitive_path` when the path looks like a secret, and the change as set by `content` (see below) |
 | WebFetch | `claude.web_fetch` | the URL without its fragment | `url`, `host` |
-| MCP tools | `claude.mcp.<server>.<tool>` | `<server>/<tool>` | the tool input, with long strings clipped |
+| MCP tools | `claude.mcp.<server>.<tool>` | `<server>/<tool>` | the tool input as set by `content` (see below) |
 
 Policies match on these. For example, `{ "arg": "in_project", "op": "eq", "value": true }` limits a rule to the project, and `{ "arg": "command", "op": "glob", "value": "*git push*--force*" }` matches a command. Command matching is text matching, not shell parsing: treat it as a seatbelt, and keep Claude Code's own permissions in place.
 
-File contents are not sent whole: a write sends its size, SHA-256 and the first 2,000 characters; an edit sends up to 2,000 characters of each side. Reviewers see these in the Remus approval page. If that is more than you want recorded, deny or hold by path instead and expect reviewers to look at the diff in the session.
+### What leaves your machine
+
+Every checked call sends the tool name (as the action), the resource and the agent's identity (the key). Beyond that:
+
+| | `content: preview` (default) | `content: hash` | `content: none` |
+| --- | --- | --- | --- |
+| **Shell command** | The command text (up to 8,000 characters), the working directory and Claude's one-line description of the command | same | same |
+| **File path** | The path, relative to the project when inside it, otherwise absolute | same | same |
+| **Write** | Size, SHA-256 and the first 2,000 characters of the content | Size and SHA-256 | Nothing about the content |
+| **Edit** | Size, SHA-256 and the first 2,000 characters of the old text and of the new text | Size and SHA-256 of each | Nothing about the content |
+| **WebFetch** | The URL | same | same |
+| **MCP tool input** | The input, with each string clipped to 1,000 characters; a digest instead if it is larger than 12 KB | Field names, size and SHA-256 | Field names only |
+
+Files that look like secrets are never sent as text, in any mode: for those, `preview` behaves as `hash`. That covers `.env` and `.env.*`, `*.pem`, `*.key`, `*.p12`, `*.pfx`, `*.jks`, `*.keystore`, `*.kdbx`, `*.asc`, `*.gpg`, `id_rsa*`, `id_dsa*`, `id_ecdsa*`, `id_ed25519*`, `credentials*`, `.netrc`, `.npmrc`, `.pypirc`, `.pgpass`, `.htpasswd`, any file whose name contains `secret`, `password`, `passwd` or `token`, and anything under `.ssh/`, `.aws/`, `.gnupg/`, `.kube/`, `.docker/` or `secrets/`. The test is on the path only; it does not read the content.
+
+Not covered by `content`: shell commands and URLs are always sent in full, because the policy matches on them. A secret typed into a command line or a URL reaches Remus and its decision history. Tool results are never sent.
+
+What is sent is stored with the request in your Remus workspace for the plan's history period, shown to reviewers on the approval page, and included in webhook events. Use `hash` or `none` if file content should not be stored there; reviewers then judge by path and look at the diff in the session.
 
 ### Options
 
@@ -60,7 +77,8 @@ Set these in `/plugin` → **remus**, or as `REMUS_GUARD_<NAME>` environment var
 | `api_url` | `https://api.remus.new-odyssey.com` | Must be https, except for localhost. |
 | `on_allow` | `prompt` | `prompt`: Claude Code's permission flow still applies. `approve`: Remus's allow approves the call. |
 | `review_wait_seconds` | `60` | How long to wait for a reviewer (0 to 300). |
-| `on_review_timeout` | `ask` | `ask` the person at the keyboard, or `deny`. |
+| `on_review_timeout` | `deny` | `deny`: refuse and wait for the reviewer. `ask`: ask the person at the keyboard, who can then override the review for that one call. |
+| `content` | `preview` | How much file content and MCP input is sent: `preview`, `hash` or `none`. See "What leaves your machine". |
 | `on_error` | `deny` | `deny`, `ask` or `pass` when Remus cannot decide. |
 | `tools` | `Bash,Write,Edit,MultiEdit,NotebookEdit,WebFetch,mcp__*` | Tool names to check; `*` is a wildcard. |
 | `skip_tools` | empty | Tool names to leave unchecked, e.g. `mcp__ide__*`. |
@@ -86,7 +104,8 @@ One request to Remus per checked tool call, with a 4-second timeout. Each uses o
 ### Limits
 
 - The guard checks tool calls Claude Code makes. It cannot see what a command does once it runs, so a script the policy allows can still do anything the script does.
-- `on_review_timeout: ask` lets the person at the keyboard override a review. Use `deny` when the reviewer must be someone else.
+- `on_review_timeout: ask` lets the person at the keyboard override a review. Leave it at `deny` when the reviewer must be someone else.
+- An unrecognised value for an option is treated as the strictest one (`on_allow: prompt`, `on_review_timeout: deny`, `on_error: deny`, `content: none`).
 - If the hook process itself cannot start (Node.js missing), Claude Code blocks the call (`onFailure: block`, v2.1.295 or later). On older versions a hook that fails to start does not block.
 
 ## Agent skill

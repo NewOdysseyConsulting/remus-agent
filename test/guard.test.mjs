@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import test, { after, before } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { actionFor, describe, firstWord, idempotencyKey, matches, readConfig, resourceOf } from '../scripts/guard.mjs';
+import { actionFor, describe, firstWord, idempotencyKey, looksSecret, matches, readConfig, resourceOf } from '../scripts/guard.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const serviceDir = resolve(process.env.REMUS_SERVICE_DIR || join(root, '../Remus/service'));
@@ -53,9 +53,10 @@ test('the starter policy is valid and plugin.json, hooks.json and the fixtures a
   const manifest = JSON.parse(readFileSync(join(root, '.claude-plugin/plugin.json'), 'utf8'));
   // Every option the guard reads is declared, with defaults that match the guard's own.
   const defaults = readConfig({});
-  assert.deepEqual(Object.keys(manifest.userConfig).sort(), ['agent_key', 'api_url', 'on_allow', 'on_error', 'on_review_timeout', 'record_outcomes', 'review_wait_seconds', 'skip_tools', 'timeout_ms', 'tools']);
-  assert.deepEqual([manifest.userConfig.on_allow.default, manifest.userConfig.on_error.default, manifest.userConfig.on_review_timeout.default, manifest.userConfig.review_wait_seconds.default, manifest.userConfig.timeout_ms.default, manifest.userConfig.tools.default, manifest.userConfig.record_outcomes.default],
-    [defaults.onAllow, defaults.onError, defaults.onReviewTimeout, defaults.reviewWaitSeconds, defaults.timeoutMs, defaults.tools.join(','), defaults.recordOutcomes]);
+  assert.deepEqual(Object.keys(manifest.userConfig).sort(), ['agent_key', 'api_url', 'content', 'on_allow', 'on_error', 'on_review_timeout', 'record_outcomes', 'review_wait_seconds', 'skip_tools', 'timeout_ms', 'tools']);
+  assert.deepEqual([manifest.userConfig.on_allow.default, manifest.userConfig.on_error.default, manifest.userConfig.on_review_timeout.default, manifest.userConfig.review_wait_seconds.default, manifest.userConfig.timeout_ms.default, manifest.userConfig.tools.default, manifest.userConfig.record_outcomes.default, manifest.userConfig.content.default],
+    [defaults.onAllow, defaults.onError, defaults.onReviewTimeout, defaults.reviewWaitSeconds, defaults.timeoutMs, defaults.tools.join(','), defaults.recordOutcomes, defaults.content]);
+  assert.deepEqual([defaults.onReviewTimeout, defaults.onError, defaults.onAllow], ['deny', 'deny', 'prompt'], 'the defaults are the strict choices');
   assert.equal(manifest.userConfig.agent_key.sensitive, true);
   assert.equal(readdirSync(join(root, 'test/fixtures')).length, 10);
 });
@@ -70,7 +71,7 @@ test('how a tool call becomes a Remus request: action, resource, args and idempo
   assert.deepEqual([write.action, write.resource, write.args.in_project, write.args.extension, write.args.content_bytes], ['claude.write', 'src/cart.js', true, 'js', 80]);
   assert.match(write.args.content_sha256, /^[a-f0-9]{64}$/);
   const edit = describe(fixture('edit-outside'), project);
-  assert.deepEqual([edit.resource, edit.args.in_project, edit.args.old_string, edit.args.new_string], ['/home/dev/.zshrc', false, 'export PATH=', 'export PATH=/tmp/bin:']);
+  assert.deepEqual([edit.resource, edit.args.in_project, edit.args.old_preview, edit.args.new_preview], ['/home/dev/.zshrc', false, 'export PATH=', 'export PATH=/tmp/bin:']);
   assert.deepEqual(describe(fixture('mcp-call'), project), { action: 'claude.mcp.github.create_issue', resource: 'github/create_issue', args: fixture('mcp-call').tool_input });
   assert.deepEqual(describe(fixture('webfetch'), project), { action: 'claude.web_fetch', resource: 'https://example.com/docs/api', args: { url: 'https://example.com/docs/api#auth', host: 'example.com' } });
   // A path that climbs out of the project is outside it, whatever it looks like.
@@ -131,13 +132,14 @@ test('Remus deny: the call is denied with the rule as the reason, whatever on_al
 });
 
 test('Remus review: wait for the reviewer; approved continues once, rejected denies, no answer asks or denies', async () => {
-  // No answer in time: ask (default) or deny (configured). Nothing is approved in Remus by asking.
-  const asked = await run('bash-rm');
+  // No answer in time: deny (default), or ask when the user opted in. Nothing is approved in Remus by asking.
+  const ASK = { CLAUDE_PLUGIN_OPTION_ON_REVIEW_TIMEOUT: 'ask' };
+  const asked = await run('bash-rm', { env: ASK });
   assert.equal(asked.decision.permissionDecision, 'ask');
   assert.match(asked.decision.permissionDecisionReason, /holding this Bash call for a reviewer \(rule "hold_recursive_delete", request [0-9a-f-]{36}\)/);
   const held = await latest();
   assert.deepEqual([held.status, held.decision], ['pending_approval', 'review']);
-  const denied = await run('bash-rm', { env: { CLAUDE_PLUGIN_OPTION_ON_REVIEW_TIMEOUT: 'deny' } });
+  const denied = await run('bash-rm');
   assert.equal(denied.decision.permissionDecision, 'deny');
   assert.match(denied.decision.permissionDecisionReason, /waiting for approval in Remus/);
   assert.equal((await latest()).id, held.id, 'the retry waits on the same held request instead of asking the reviewer again');
@@ -149,14 +151,15 @@ test('Remus review: wait for the reviewer; approved continues once, rejected den
   assert.deepEqual([resumed.stdout, await total()], ['', count], 'continues (normal permission flow) without a new request');
   assert.equal((await tenant.admin.getRequest(held.id)).status, 'executing', 'the approval was claimed');
   const again = await run('bash-rm');
-  assert.equal(again.decision.permissionDecision, 'ask', 'a second identical call needs its own approval');
+  assert.equal(again.decision.permissionDecision, 'deny', 'a second identical call needs its own approval');
+  assert.match(again.decision.permissionDecisionReason, /has not been approved yet/);
   assert.notEqual((await latest()).id, held.id);
 
   // Approved while the guard is waiting.
   const waiting = run('edit-outside', { env: { CLAUDE_PLUGIN_OPTION_REVIEW_WAIT_SECONDS: '15', CLAUDE_PLUGIN_OPTION_ON_ALLOW: 'approve' } });
   let pending;
   for (let attempt = 0; attempt < 60 && !pending; attempt += 1) { await new Promise(done => setTimeout(done, 100)); pending = (await tenant.reviewer.approvals()).items.find(item => item.action === 'claude.edit'); }
-  assert.deepEqual([pending.rule, pending.resource, pending.args.new_string], ['edit_outside_project', '/home/dev/.zshrc', 'export PATH=/tmp/bin:'], 'the reviewer sees what will change');
+  assert.deepEqual([pending.rule, pending.resource, pending.args.new_preview], ['edit_outside_project', '/home/dev/.zshrc', 'export PATH=/tmp/bin:'], 'the reviewer sees what will change');
   await tenant.reviewer.approve(pending.id, { requestHash: pending.requestHash });
   assert.equal((await waiting).decision.permissionDecision, 'allow');
 
@@ -166,7 +169,8 @@ test('Remus review: wait for the reviewer; approved continues once, rejected den
   assert.deepEqual([mcp.action, mcp.rule], ['claude.mcp.github.create_issue', 'mcp_calls']);
   await tenant.reviewer.reject(mcp.id, { requestHash: mcp.requestHash });
   const rejected = await run('mcp-call');
-  assert.equal(rejected.decision.permissionDecision, 'ask', 'a rejected request is not reused; the new call is held again');
+  assert.match(rejected.decision.permissionDecisionReason, /has not been approved yet/, 'a rejected request is not reused; the new call is held again');
+  assert.equal((await run('mcp-call', { env: { CLAUDE_PLUGIN_OPTION_ON_REVIEW_TIMEOUT: 'sometimes' } })).decision.permissionDecision, 'deny', 'an unrecognised setting is the strict one');
   const second = await latest();
   await tenant.reviewer.reject(second.id, { requestHash: second.requestHash });
   // ...and when the rejection arrives during the wait:
@@ -191,7 +195,8 @@ test('an approval cannot be attached to a different call through the local state
   const key = createHash('sha256').update(canonical(describe(dangerous, '/home/dev/shop'))).digest('hex').slice(0, 48);
   writeFileSync(join(stateDir, 'held', `${key}.json`), JSON.stringify({ id: approved.id }));
   const result = await run(dangerous);
-  assert.equal(result.decision.permissionDecision, 'ask', 'held for its own review, not waved through');
+  assert.equal(result.decision.permissionDecision, 'deny', 'held for its own review, not waved through');
+  assert.match(result.decision.permissionDecisionReason, /has not been approved yet/);
   assert.equal((await tenant.admin.getRequest(approved.id)).status, 'approved', 'the other approval was not consumed');
   assert.equal((await latest()).args.command, 'rm -rf /etc/nginx');
 });
@@ -268,4 +273,43 @@ test('record_outcomes: the call is claimed before it runs and its outcome is rep
   assert.deepEqual([after.code, after.stdout, (await latest()).status, await total()], [0, '', 'ready', count + 1]);
   // A post hook never fails the session, even when Remus is down.
   assert.equal((await run('bash-test', { env: { ...env, CLAUDE_PLUGIN_OPTION_API_URL: 'http://127.0.0.1:9' }, mode: 'post-ok' })).code, 0);
+});
+
+test('what leaves the machine: preview, hash or none, and never the text of a secret-looking file', async () => {
+  const project = '/home/dev/shop';
+  const write = fixture('write-inside'); const edit = fixture('edit-outside'); const secret = fixture('write-env'); const mcp = fixture('mcp-call');
+  const body = write.tool_input.content;
+  // preview (default): clipped text plus size and hash.
+  assert.deepEqual(Object.keys(describe(write, project).args).sort(), ['content_bytes', 'content_preview', 'content_sha256', 'extension', 'file_name', 'in_project', 'path']);
+  assert.equal(describe(write, project).args.content_preview, body);
+  // hash: size and hash only. none: neither.
+  const hashed = describe(write, project, 'hash').args;
+  assert.deepEqual([Object.keys(hashed).sort(), hashed.content_bytes], [['content_bytes', 'content_sha256', 'extension', 'file_name', 'in_project', 'path'], Buffer.byteLength(body)]);
+  assert.deepEqual(Object.keys(describe(write, project, 'none').args).sort(), ['extension', 'file_name', 'in_project', 'path']);
+  for (const mode of ['hash', 'none']) {
+    const sent = JSON.stringify([describe(write, project, mode), describe(edit, project, mode), describe(mcp, project, mode)]);
+    for (const text of ['reduce', 'export PATH=', '/tmp/bin', 'Cart total is wrong', 'Steps to reproduce']) assert.ok(!sent.includes(text), `${mode}: ${text}`);
+  }
+  assert.deepEqual(Object.keys(describe(edit, project, 'hash').args).filter(key => /^(old|new)_/.test(key)).sort(), ['new_bytes', 'new_sha256', 'old_bytes', 'old_sha256']);
+  assert.deepEqual(describe(mcp, project, 'none').args, { keys: ['owner', 'repo', 'title', 'body'] });
+  assert.deepEqual(Object.keys(describe(mcp, project, 'hash').args).sort(), ['input_bytes', 'input_sha256', 'keys']);
+  // Secret-looking paths: hash only, even in preview mode, for writes and for edits.
+  const env = describe(secret, project).args;
+  assert.deepEqual([env.sensitive_path, env.content_preview, typeof env.content_sha256, env.content_bytes], [true, undefined, 'string', 27]);
+  assert.ok(!JSON.stringify(describe(secret, project)).includes('sk_live_example'));
+  const keyEdit = describe({ tool_name: 'Edit', cwd: project, tool_input: { file_path: '/home/dev/.ssh/config', old_string: 'IdentityFile old', new_string: 'IdentityFile new' } }, project);
+  assert.ok(!JSON.stringify(keyEdit).includes('IdentityFile') && keyEdit.args.sensitive_path === true);
+  assert.deepEqual(['.env', '.env.production', 'server.pem', 'tls.key', 'id_rsa', 'id_ed25519.pub', 'credentials', 'credentials.json', '.npmrc', '.netrc', 'api-token.txt', 'db_password.txt'].map(name => looksSecret(`/p/${name}`)), Array(12).fill(true));
+  assert.deepEqual(['/p/.aws/config', '/p/.ssh/known_hosts', '/p/secrets/app.yaml', 'C:\\Users\\dev\\.ssh\\config'].map(looksSecret), [true, true, true, true]);
+  assert.deepEqual(['/p/src/cart.js', '/p/README.md', '/p/environment.ts', '/p/keyboard.js', '/p/package.json'].map(looksSecret), [false, false, false, false, false]);
+  // End to end: what Remus stored for a secret-looking write, and in hash mode.
+  await run('write-env');
+  const stored = await latest();
+  assert.deepEqual([stored.rule, stored.args.sensitive_path, 'content_preview' in stored.args], ['protect_secrets_and_git', true, false]);
+  assert.ok(!JSON.stringify(stored).includes('sk_live_example'));
+  await run('write-inside', { env: { CLAUDE_PLUGIN_OPTION_CONTENT: 'hash' } });
+  assert.ok(!JSON.stringify(await latest()).includes('reduce'));
+  // An unrecognised setting sends nothing rather than everything.
+  await run('write-inside', { env: { CLAUDE_PLUGIN_OPTION_CONTENT: 'everything' } });
+  assert.deepEqual(Object.keys((await latest()).args).sort(), ['extension', 'file_name', 'in_project', 'path']);
 });
