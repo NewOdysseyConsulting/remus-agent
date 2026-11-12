@@ -39,7 +39,7 @@ Optional, same account: publish the SDK too (`cd Remus/service/sdk && npm publis
 
 ```sh
 cd remus-agent
-npm test && npm run validate     # 9 tests; "Validation passed"
+npm test && npm run validate     # 10 tests; "Validation passed"
 gh repo create <owner>/remus-agent --public --source . --remote origin --description "Remus agent skill and Claude Code plugin"
 git push -u origin main
 ```
