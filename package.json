@@ -1,0 +1,13 @@
+{
+  "name": "remus-agent",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Remus agent skill (ClawHub) and Claude Code plugin",
+  "type": "module",
+  "license": "MIT-0",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "test": "node --test --test-concurrency=1 --test-timeout=120000 --test-force-exit test/*.test.mjs",
+    "validate": "claude plugin validate . --strict"
+  }
+}

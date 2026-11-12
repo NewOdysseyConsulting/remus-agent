@@ -1,0 +1,15 @@
+{
+  "session_id": "8f2c1a90-5b7e-4c1d-9a55-2f6f0c7d1e01",
+  "transcript_path": "/home/dev/.claude/projects/-home-dev-shop/8f2c1a90.jsonl",
+  "cwd": "/home/dev/shop",
+  "permission_mode": "default",
+  "hook_event_name": "PreToolUse",
+  "tool_name": "mcp__github__create_issue",
+  "tool_input": {
+    "owner": "acme",
+    "repo": "shop",
+    "title": "Cart total is wrong",
+    "body": "Steps to reproduce..."
+  },
+  "tool_use_id": "toolu_01McpCall00000000000000008"
+}

@@ -1,0 +1,436 @@
+{
+  "description": "Starter policy for the Remus plugin for Claude Code. Agent name: claude-code. Anything not allowed here is denied.",
+  "rules": [
+    {
+      "id": "edit_inside_project",
+      "description": "File writes and edits inside the project are allowed.",
+      "effect": "allow",
+      "agents": [
+        "claude-code"
+      ],
+      "actions": [
+        "claude.write",
+        "claude.edit",
+        "claude.multi_edit",
+        "claude.notebook_edit"
+      ],
+      "conditions": [
+        {
+          "arg": "in_project",
+          "op": "eq",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "shell_inside_project",
+      "description": "Shell commands run from inside the project are allowed, unless a rule below holds or denies them.",
+      "effect": "allow",
+      "agents": [
+        "claude-code"
+      ],
+      "actions": [
+        "claude.bash"
+      ],
+      "conditions": [
+        {
+          "arg": "in_project",
+          "op": "eq",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "web_fetch",
+      "description": "Fetching web pages is allowed.",
+      "effect": "allow",
+      "agents": [
+        "claude-code"
+      ],
+      "actions": [
+        "claude.web_fetch"
+      ]
+    },
+    {
+      "id": "edit_outside_project",
+      "description": "Writing outside the project needs a reviewer.",
+      "effect": "require_approval",
+      "actions": [
+        "claude.write",
+        "claude.edit",
+        "claude.multi_edit",
+        "claude.notebook_edit"
+      ],
+      "conditions": [
+        {
+          "arg": "in_project",
+          "op": "eq",
+          "value": false
+        }
+      ]
+    },
+    {
+      "id": "shell_outside_project",
+      "description": "Shell commands run from outside the project need a reviewer.",
+      "effect": "require_approval",
+      "actions": [
+        "claude.bash"
+      ],
+      "conditions": [
+        {
+          "arg": "in_project",
+          "op": "eq",
+          "value": false
+        }
+      ]
+    },
+    {
+      "id": "mcp_calls",
+      "description": "Calls to MCP tools need a reviewer until you add rules for the servers you trust.",
+      "effect": "require_approval",
+      "actions": [
+        "claude.mcp.*"
+      ]
+    },
+    {
+      "id": "hold_recursive_delete",
+      "description": "Commands matching *rm -r* need a reviewer.",
+      "effect": "require_approval",
+      "actions": [
+        "claude.bash"
+      ],
+      "conditions": [
+        {
+          "arg": "command",
+          "op": "glob",
+          "value": "*rm -r*"
+        }
+      ]
+    },
+    {
+      "id": "hold_recursive_delete_long",
+      "description": "Commands matching *rm --recursive* need a reviewer.",
+      "effect": "require_approval",
+      "actions": [
+        "claude.bash"
+      ],
+      "conditions": [
+        {
+          "arg": "command",
+          "op": "glob",
+          "value": "*rm --recursive*"
+        }
+      ]
+    },
+    {
+      "id": "hold_force_push",
+      "description": "Commands matching *git push*--force* need a reviewer.",
+      "effect": "require_approval",
+      "actions": [
+        "claude.bash"
+      ],
+      "conditions": [
+        {
+          "arg": "command",
+          "op": "glob",
+          "value": "*git push*--force*"
+        }
+      ]
+    },
+    {
+      "id": "hold_force_push_short",
+      "description": "Commands matching *git push* -f* need a reviewer.",
+      "effect": "require_approval",
+      "actions": [
+        "claude.bash"
+      ],
+      "conditions": [
+        {
+          "arg": "command",
+          "op": "glob",
+          "value": "*git push* -f*"
+        }
+      ]
+    },
+    {
+      "id": "hold_hard_reset",
+      "description": "Commands matching *git reset --hard* need a reviewer.",
+      "effect": "require_approval",
+      "actions": [
+        "claude.bash"
+      ],
+      "conditions": [
+        {
+          "arg": "command",
+          "op": "glob",
+          "value": "*git reset --hard*"
+        }
+      ]
+    },
+    {
+      "id": "hold_git_clean",
+      "description": "Commands matching *git clean * need a reviewer.",
+      "effect": "require_approval",
+      "actions": [
+        "claude.bash"
+      ],
+      "conditions": [
+        {
+          "arg": "command",
+          "op": "glob",
+          "value": "*git clean *"
+        }
+      ]
+    },
+    {
+      "id": "hold_drop_table",
+      "description": "Commands matching *DROP TABLE* need a reviewer.",
+      "effect": "require_approval",
+      "actions": [
+        "claude.bash"
+      ],
+      "conditions": [
+        {
+          "arg": "command",
+          "op": "glob",
+          "value": "*DROP TABLE*"
+        }
+      ]
+    },
+    {
+      "id": "hold_drop_table_lower",
+      "description": "Commands matching *drop table* need a reviewer.",
+      "effect": "require_approval",
+      "actions": [
+        "claude.bash"
+      ],
+      "conditions": [
+        {
+          "arg": "command",
+          "op": "glob",
+          "value": "*drop table*"
+        }
+      ]
+    },
+    {
+      "id": "hold_drop_database",
+      "description": "Commands matching *DROP DATABASE* need a reviewer.",
+      "effect": "require_approval",
+      "actions": [
+        "claude.bash"
+      ],
+      "conditions": [
+        {
+          "arg": "command",
+          "op": "glob",
+          "value": "*DROP DATABASE*"
+        }
+      ]
+    },
+    {
+      "id": "hold_drop_database_lower",
+      "description": "Commands matching *drop database* need a reviewer.",
+      "effect": "require_approval",
+      "actions": [
+        "claude.bash"
+      ],
+      "conditions": [
+        {
+          "arg": "command",
+          "op": "glob",
+          "value": "*drop database*"
+        }
+      ]
+    },
+    {
+      "id": "hold_terraform_destroy",
+      "description": "Commands matching *terraform destroy* need a reviewer.",
+      "effect": "require_approval",
+      "actions": [
+        "claude.bash"
+      ],
+      "conditions": [
+        {
+          "arg": "command",
+          "op": "glob",
+          "value": "*terraform destroy*"
+        }
+      ]
+    },
+    {
+      "id": "hold_kubectl_delete",
+      "description": "Commands matching *kubectl delete* need a reviewer.",
+      "effect": "require_approval",
+      "actions": [
+        "claude.bash"
+      ],
+      "conditions": [
+        {
+          "arg": "command",
+          "op": "glob",
+          "value": "*kubectl delete*"
+        }
+      ]
+    },
+    {
+      "id": "hold_package_publish",
+      "description": "Commands matching *npm publish* need a reviewer.",
+      "effect": "require_approval",
+      "actions": [
+        "claude.bash"
+      ],
+      "conditions": [
+        {
+          "arg": "command",
+          "op": "glob",
+          "value": "*npm publish*"
+        }
+      ]
+    },
+    {
+      "id": "hold_docker_prune",
+      "description": "Commands matching *docker system prune* need a reviewer.",
+      "effect": "require_approval",
+      "actions": [
+        "claude.bash"
+      ],
+      "conditions": [
+        {
+          "arg": "command",
+          "op": "glob",
+          "value": "*docker system prune*"
+        }
+      ]
+    },
+    {
+      "id": "hold_pipe_to_shell",
+      "description": "Commands matching *| sh* need a reviewer.",
+      "effect": "require_approval",
+      "actions": [
+        "claude.bash"
+      ],
+      "conditions": [
+        {
+          "arg": "command",
+          "op": "glob",
+          "value": "*| sh*"
+        }
+      ]
+    },
+    {
+      "id": "hold_pipe_to_bash",
+      "description": "Commands matching *| bash* need a reviewer.",
+      "effect": "require_approval",
+      "actions": [
+        "claude.bash"
+      ],
+      "conditions": [
+        {
+          "arg": "command",
+          "op": "glob",
+          "value": "*| bash*"
+        }
+      ]
+    },
+    {
+      "id": "protect_secrets_and_git",
+      "description": "Never write key material, environment files or Git internals.",
+      "effect": "deny",
+      "actions": [
+        "claude.write",
+        "claude.edit",
+        "claude.multi_edit",
+        "claude.notebook_edit"
+      ],
+      "resources": [
+        ".env",
+        ".env.*",
+        "*/.env",
+        "*/.env.*",
+        "*.pem",
+        "*.key",
+        "*id_rsa*",
+        "*id_ed25519*",
+        ".git/*",
+        "*/.git/*",
+        "*/.ssh/*",
+        "*/.aws/*"
+      ]
+    },
+    {
+      "id": "deny_sudo",
+      "description": "Commands matching sudo * are blocked.",
+      "effect": "deny",
+      "actions": [
+        "claude.bash"
+      ],
+      "conditions": [
+        {
+          "arg": "command",
+          "op": "glob",
+          "value": "sudo *"
+        }
+      ]
+    },
+    {
+      "id": "deny_sudo_inline",
+      "description": "Commands matching * sudo * are blocked.",
+      "effect": "deny",
+      "actions": [
+        "claude.bash"
+      ],
+      "conditions": [
+        {
+          "arg": "command",
+          "op": "glob",
+          "value": "* sudo *"
+        }
+      ]
+    },
+    {
+      "id": "deny_make_filesystem",
+      "description": "Commands matching *mkfs* are blocked.",
+      "effect": "deny",
+      "actions": [
+        "claude.bash"
+      ],
+      "conditions": [
+        {
+          "arg": "command",
+          "op": "glob",
+          "value": "*mkfs*"
+        }
+      ]
+    },
+    {
+      "id": "deny_raw_disk_write",
+      "description": "Commands matching *dd *of=/dev/* are blocked.",
+      "effect": "deny",
+      "actions": [
+        "claude.bash"
+      ],
+      "conditions": [
+        {
+          "arg": "command",
+          "op": "glob",
+          "value": "*dd *of=/dev/*"
+        }
+      ]
+    },
+    {
+      "id": "deny_fork_bomb",
+      "description": "Commands matching *:(){* are blocked.",
+      "effect": "deny",
+      "actions": [
+        "claude.bash"
+      ],
+      "conditions": [
+        {
+          "arg": "command",
+          "op": "glob",
+          "value": "*:(){*"
+        }
+      ]
+    }
+  ]
+}

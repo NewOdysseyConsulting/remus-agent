@@ -1,0 +1,74 @@
+{
+  "name": "remus",
+  "displayName": "Remus",
+  "version": "1.0.0",
+  "description": "Checks Claude Code's tool calls against your Remus policy before they run: deny, hold for a reviewer, or let Claude Code's normal permission flow continue.",
+  "author": { "name": "New Odyssey", "url": "https://remus.new-odyssey.com" },
+  "homepage": "https://remus.new-odyssey.com/docs",
+  "license": "MIT-0",
+  "keywords": ["permissions", "approvals", "policy", "security", "audit"],
+  "userConfig": {
+    "agent_key": {
+      "type": "string",
+      "title": "Remus agent key",
+      "description": "An agent key from the Remus dashboard (Agents and keys). Starts with remus_agent_. If left empty, the REMUS_AGENT_KEY environment variable is used.",
+      "sensitive": true
+    },
+    "api_url": {
+      "type": "string",
+      "title": "Remus API URL",
+      "description": "Leave empty for https://api.remus.new-odyssey.com. Must be https, except for localhost."
+    },
+    "on_allow": {
+      "type": "string",
+      "title": "When Remus allows a call",
+      "description": "prompt (default): Claude Code's normal permission flow still applies. approve: skip Claude Code's permission prompt for calls Remus allows.",
+      "default": "prompt"
+    },
+    "review_wait_seconds": {
+      "type": "number",
+      "title": "Seconds to wait for a reviewer",
+      "description": "How long a call that Remus holds for approval waits for a reviewer before the timeout behaviour applies. 0 to 300.",
+      "default": 60,
+      "min": 0,
+      "max": 300
+    },
+    "on_review_timeout": {
+      "type": "string",
+      "title": "When no reviewer answers in time",
+      "description": "ask (default): ask the person at the keyboard, who can override the review for that one call. deny: refuse the call and tell Claude to wait for the approval.",
+      "default": "ask"
+    },
+    "on_error": {
+      "type": "string",
+      "title": "When Remus cannot decide",
+      "description": "Applies when Remus is unreachable, the key is missing or rejected, or the allowance is used up. deny (default): refuse the call. ask: ask the person at the keyboard. pass: let Claude Code decide as if the plugin were not installed.",
+      "default": "deny"
+    },
+    "tools": {
+      "type": "string",
+      "title": "Tools to check",
+      "description": "Comma-separated tool names; * is a wildcard. Default: Bash,Write,Edit,MultiEdit,NotebookEdit,WebFetch,mcp__*",
+      "default": "Bash,Write,Edit,MultiEdit,NotebookEdit,WebFetch,mcp__*"
+    },
+    "skip_tools": {
+      "type": "string",
+      "title": "Tools to leave unchecked",
+      "description": "Comma-separated tool names to exclude from the list above, for example mcp__ide__*. Empty by default."
+    },
+    "record_outcomes": {
+      "type": "boolean",
+      "title": "Record outcomes in Remus",
+      "description": "Claim each allowed call in Remus and report whether it succeeded. Uses a second policy decision per call. Off by default.",
+      "default": false
+    },
+    "timeout_ms": {
+      "type": "number",
+      "title": "Request timeout (ms)",
+      "description": "How long to wait for each answer from Remus. 500 to 30000.",
+      "default": 4000,
+      "min": 500,
+      "max": 30000
+    }
+  }
+}

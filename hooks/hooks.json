@@ -1,0 +1,36 @@
+{
+  "description": "Ask Remus before a tool call runs; optionally report the outcome afterwards.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "^(Bash|Write|Edit|MultiEdit|NotebookEdit|WebFetch|WebSearch|mcp__.*)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/guard.mjs", "pre"],
+            "timeout": 330,
+            "onFailure": "block",
+            "statusMessage": "Checking with Remus"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "^(Bash|Write|Edit|MultiEdit|NotebookEdit|WebFetch|WebSearch|mcp__.*)$",
+        "hooks": [
+          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/guard.mjs", "post-ok"], "timeout": 15, "async": true }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "^(Bash|Write|Edit|MultiEdit|NotebookEdit|WebFetch|WebSearch|mcp__.*)$",
+        "hooks": [
+          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/guard.mjs", "post-failed"], "timeout": 15, "async": true }
+        ]
+      }
+    ]
+  }
+}

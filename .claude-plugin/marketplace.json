@@ -1,0 +1,13 @@
+{
+  "name": "remus",
+  "description": "Remus: permissions and approvals for AI agent tools.",
+  "owner": { "name": "New Odyssey", "url": "https://remus.new-odyssey.com" },
+  "plugins": [
+    {
+      "name": "remus",
+      "source": "./",
+      "description": "Checks Claude Code's tool calls against your Remus policy before they run.",
+      "category": "security"
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "session_id": "8f2c1a90-5b7e-4c1d-9a55-2f6f0c7d1e01",
+  "transcript_path": "/home/dev/.claude/projects/-home-dev-shop/8f2c1a90.jsonl",
+  "cwd": "/home/dev/shop",
+  "permission_mode": "default",
+  "hook_event_name": "PreToolUse",
+  "tool_name": "WebFetch",
+  "tool_input": {
+    "url": "https://example.com/docs/api#auth",
+    "prompt": "Summarise"
+  },
+  "tool_use_id": "toolu_01WebFetch000000000000009"
+}
