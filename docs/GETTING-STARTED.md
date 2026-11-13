@@ -40,7 +40,7 @@ Command patterns are plain text with `*` as the wildcard, and they are case-sens
 ## 3. Install the plugin and set the key
 
 ```sh
-claude plugin marketplace add <owner>/remus-agent
+claude plugin marketplace add NewOdysseyConsulting/remus-agent
 claude plugin install remus@remus
 ```
 

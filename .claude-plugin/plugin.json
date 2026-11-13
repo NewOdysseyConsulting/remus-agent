@@ -5,6 +5,7 @@
   "description": "Checks Claude Code's tool calls against your Remus policy before they run: deny, hold for a reviewer, or let Claude Code's normal permission flow continue.",
   "author": { "name": "New Odyssey", "url": "https://remus.new-odyssey.com" },
   "homepage": "https://remus.new-odyssey.com/docs",
+  "repository": "https://github.com/NewOdysseyConsulting/remus-agent",
   "license": "MIT-0",
   "keywords": ["permissions", "approvals", "policy", "security", "audit"],
   "userConfig": {

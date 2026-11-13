@@ -18,7 +18,7 @@ You need a Remus workspace (free plan: 5,000 policy decisions a month), an agent
 Requires Claude Code v2.1.295 or later and Node.js 20 or later on your `PATH`.
 
 ```sh
-claude plugin marketplace add <owner>/remus-agent
+claude plugin marketplace add NewOdysseyConsulting/remus-agent
 claude plugin install remus@remus
 ```
 
@@ -113,11 +113,10 @@ One request to Remus per checked tool call, with a 4-second timeout. Each uses o
 [`skills/remus/SKILL.md`](skills/remus/SKILL.md) tells an agent when to ask Remus and exactly what to do on allow, deny, review and error. It needs the `remus` command and `REMUS_AGENT_KEY`.
 
 ```sh
-npm install -g @new-odyssey/remus-cli
-clawhub install @<owner>/remus
+npm install -g https://remus.new-odyssey.com/downloads/remus-cli.tgz
 ```
 
-For Claude Code, installing the plugin above also loads the skill.
+For Claude Code, installing the plugin above also loads the skill. For other agents, copy `skills/remus/` into the agent's skills folder.
 
 ## Development
 
@@ -128,6 +127,6 @@ npm run validate    # claude plugin validate . --strict
 
 The tests import the service from a sibling checkout of the Remus repository (`../Remus/service`, or `REMUS_SERVICE_DIR`) and need the throwaway Postgres its README describes.
 
-`scripts/guard.mjs` is one file with no dependencies. Publishing steps are in [PUBLISHING.md](PUBLISHING.md).
+`scripts/guard.mjs` is one file with no dependencies.
 
 Licence: MIT-0.
